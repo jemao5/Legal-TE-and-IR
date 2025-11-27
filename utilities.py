@@ -27,3 +27,64 @@ def get_topk_labelled_abstracts(k, labelled_ids_path, filtered_abstracts_path):
     # print(labelled_ids[0:k])
 
     return abstracts
+
+
+def evaluate_ranking(rankings_path, filtered_citations_path, recall_k):
+    """
+    Evaluate the ranking results against ground truth labelled IDs.
+    """
+    with open(filtered_citations_path, 'r', encoding='utf-8') as citations_file, open(rankings_path, 'r', encoding='utf-8') as rankings_file:
+        rankings = {}
+        next(citations_file)  # Skip header
+
+        for line in rankings_file:
+            line = line.strip().split('\t')
+            if line[0] != line[1]:
+                if line[0] not in rankings:
+                    rankings[line[0]] = []
+                rankings[line[0]].append(line[1])
+        
+        ground_truths = {}
+        for line in citations_file:
+            line = line.strip().split('\t')
+            if line[0] in rankings:
+                if line[0] not in ground_truths:
+                    ground_truths[line[0]] = set()
+                ground_truths[line[0]].add(line[2])
+        
+            # ----- Evaluation -----
+        average_precisions = []
+        recalls = []
+        evaluated_queries = 0
+        k = recall_k  # You can change this value if needed
+
+    for qid in ground_truths:
+        if qid not in rankings:
+            continue
+        retrieved = rankings[qid]
+        relevant = ground_truths[qid]
+        if not relevant:
+            continue
+
+        # MAP calculation
+        hits = 0
+        precision_sum = 0.0
+        for rank, doc_id in enumerate(retrieved):
+            if doc_id in relevant:
+                hits += 1
+                precision_sum += hits / (rank + 1)
+        ap = precision_sum / len(relevant)
+        average_precisions.append(ap)
+
+        # Recall@K calculation
+        top_k = set(retrieved[:k])
+        recall = len(top_k & relevant) / len(relevant)
+        recalls.append(recall)
+
+        evaluated_queries += 1
+
+    mean_ap = sum(average_precisions) / evaluated_queries if evaluated_queries else 0.0
+    mean_recall = sum(recalls) / evaluated_queries if evaluated_queries else 0.0
+
+    print(f"MAP: {mean_ap:.4f}")
+    print(f"Recall@{k}: {mean_recall:.4f} over {evaluated_queries} queries")

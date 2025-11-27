@@ -12,9 +12,9 @@ def main():
     # filtered_abs_path = "filtered_abstracts.tsv"
     # process_terms(filtered_abs_path)
 
-    queries = utilities.get_topk_labelled_abstracts(5, "labelled_ids.pickle", "filtered_abstracts.tsv")
-    print(queries)
+    queries = utilities.get_topk_labelled_abstracts(50, "labelled_ids.pickle", "filtered_abstracts.tsv")
     tfidf_search(queries, "tfidf_rankings.tsv")
+    utilities.evaluate_ranking("tfidf_rankings.tsv", "filtered_citations.tsv", 1000)
 
 def load_pickle(f):
     with open(f, 'rb') as file:
