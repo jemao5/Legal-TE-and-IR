@@ -1,0 +1,35 @@
+# Raw USPTO data files (large)
+g_cpc_current.tsv
+g_patent_abstract.tsv
+g_us_patent_citation.tsv
+
+# Filtered output files
+filtered_abstracts.tsv
+filtered_citations.tsv
+
+# BM25 results
+bm25_results.tsv
+
+# API spec (can be re-fetched)
+patentsearch_openapi.json
+
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
