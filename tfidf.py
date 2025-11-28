@@ -1,3 +1,4 @@
+import utilities
 import re
 import math
 import numpy as np
@@ -5,34 +6,35 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from stop_list import closed_class_stop_words
 import pickle
+import os
 
 def main():
-    filtered_abs_path = "filtered_abstracts.tsv"
-    process_terms(filtered_abs_path)
+    # filtered_abs_path = "filtered_abstracts.tsv"
+    # process_terms(filtered_abs_path)
+
+    queries = utilities.get_topk_labelled_abstracts(50, "labelled_ids.pickle", "filtered_abstracts.tsv")
+    tfidf_search(queries, "tfidf_rankings.tsv")
+    utilities.evaluate_ranking("tfidf_rankings.tsv", "filtered_citations.tsv", 1000)
 
 def load_pickle(f):
     with open(f, 'rb') as file:
         return pickle.load(file)
     
-def tfidf_search(queries):
+def tfidf_search(queries, output_file):
+    """
+    Takes in a dictionary of queries. Returns an ordered list of the top 100 pattents by similarity.
+    """
+
     abstract_vectors = load_pickle("abs_tfidf.pickle")
     a_term_idf = load_pickle("term_idf.pickle")
 
+    #tokenize queries
+    for query in queries:
+        queries[query] = tokenize(queries[query])
+
     #calculate TF-IDF for the queries
     query_vectors = {}
-    q_term_df = {}
 
-    #store term frequences in each query and the number of queries each term is seen in
-    for query in queries:
-        unique_terms = set(queries[query])
-        query_vectors[query] = {}
-        for term in unique_terms:
-            query_vectors[query][term] = queries[query].count(term)
-            if query_vectors[query][term] > 0:
-                q_term_df[term] = q_term_df.get(term, 0) + 1
-
-    #calculate document frequences
-    q_term_idf = {term: math.log((len(queries)+1.0)/(df_value+.5)) + 1.0 for term, df_value in q_term_df.items()}
 
     for query in queries:
         unique_terms = set(queries[query])
@@ -42,13 +44,13 @@ def tfidf_search(queries):
 
         #calculate TF-IDF
         query_vectors[query] = {term: math.log(count) + 1.0 for term, count in query_vectors[query].items()}
-        query_vectors[query] = {term: (count * q_term_idf.get(term, 0)) * a_term_idf.get(term, 1) for term, count in query_vectors[query].items()}
+        query_vectors[query] = {term: count * a_term_idf.get(term, 0) for term, count in query_vectors[query].items()}
 
     #Calculate cosine similarity
     cosine_similarities = {}
 
     abstract_norms = {}
-    for abstract in abstracts:
+    for abstract in abstract_vectors:
         abstract_norms[abstract] = np.linalg.norm(np.array([value for term,value in abstract_vectors[abstract].items()]))
 
     for query in query_vectors:
@@ -73,11 +75,11 @@ def tfidf_search(queries):
     for q in cosine_similarities:
         ranked_list[q] = [key for key, value in reversed(sorted(cosine_similarities[q].items(), key=lambda item: item[1]))]
 
-    with open(output_file, 'w') as file:
+    with open(output_file, 'w', encoding='utf-8') as file:
         for q in ranked_list:
             for id in ranked_list[q]:
                 if cosine_similarities[q][id] != 0:
-                    file.write(f"{q} {id} {cosine_similarities[q][id]}\n")
+                    file.write(f"{q}\t{id}\t{cosine_similarities[q][id]}\n")
 
 
 

@@ -1,71 +1,66 @@
-#!/usr/bin/env python3
-"""
-Filter USPTO patent data to A61B subset.
 
-Reads the full TSV files and outputs:
-- filtered_abstracts.tsv: patent_id, patent_abstract for A61B patents
-- filtered_citations.tsv: citations where both citing and cited patents are in A61B
-"""
-
+import pickle
 
 def main():
-    # Input paths - TSV files in root directory
-    cpc_path = "g_cpc_current.tsv"
-    abs_path = "g_patent_abstract.tsv"
-    cit_path = "g_us_patent_citation.tsv"
+    """
+    Processes raw PatentsView TSV files to extract a subset of A61B patents and their in-corpus citations.
 
-    # Output paths
+    Creates the following output files:
+    1. filtered_abstracts.tsv — abstracts of patents classified under CPC subclass A61B
+    2. filtered_citations.tsv — citation pairs where both citing and cited patents are in A61B
+    3. labelled_ids.pickle — list of patent IDs that cite at least one other A61B patent (i.e., eligible as evaluation queries)
+
+    These outputs are used for building a domain-specific patent corpus with internal citation ground truth
+    for information retrieval system evaluation.
+    """
+    
+    cpc_path = r"Patent Data\g_cpc_current.tsv\g_cpc_current.tsv"
+    abs_path = r"Patent Data\g_patent_abstract.tsv\g_patent_abstract.tsv"
+    cit_path = r"Patent Data\g_us_patent_citation.tsv\g_us_patent_citation.tsv"
+
     abs_write_path = "filtered_abstracts.tsv"
     cit_write_path = "filtered_citations.tsv"
+    labelled_ids_write_path = "labelled_ids.pickle"
 
-    print(f"Reading CPC classifications from {cpc_path}...")
-    target_label = "A61B"
-    target_ids = set()
 
-    with open(cpc_path, "r", encoding="utf-8") as cpc:
-        next(cpc)  # skip header
+    with open(cpc_path, 'r', encoding="utf-8") as cpc, open(abs_path, 'r', encoding="utf-8") as abs, open(cit_path, 'r', encoding="utf-8") as cit, open(abs_write_path, 'w', encoding="utf-8") as abs_write, open(cit_write_path, 'w', encoding="utf-8") as cit_write:
+        next(cpc)
+        target_label = 'A61B' 
+        target_ids = set()
         for line in cpc:
-            # header: "patent_id" "cpc_sequence" "cpc_section" "cpc_class" "cpc_subclass" "cpc_group" "cpc_type"
-            parts = line.strip().split("\t")
-            parts = [elem.strip('"') for elem in parts]
-            if len(parts) >= 5 and parts[4] == target_label:
-                target_ids.add(parts[0])
+            # header: "patent_id"	"cpc_sequence"	"cpc_section"	"cpc_class"	"cpc_subclass"	"cpc_group"	"cpc_type"
+            line = line.strip().split('\t')
+            line = [elem.strip('"') for elem in line]
+            # print(line)
+            if line[4] == target_label:
+                target_ids.add(line[0])
+        # print(target_ids)
 
-    print(f"Found {len(target_ids)} patents with CPC subclass {target_label}")
-
-    print(f"Filtering abstracts to {abs_write_path}...")
-    abs_count = 0
-    with open(abs_path, "r", encoding="utf-8") as abs_file, open(
-        abs_write_path, "w", encoding="utf-8"
-    ) as abs_write:
-        next(abs_file)  # skip header
-        for line in abs_file:
-            parts = line.strip().split("\t")
-            parts = [elem.strip('"') for elem in parts]
-            if parts[0] in target_ids:
-                out_line = "\t".join(parts) + "\n"
-                abs_write.write(out_line)
-                abs_count += 1
-
-    print(f"Wrote {abs_count} abstracts")
-
-    print(f"Filtering citations to {cit_write_path}...")
-    cit_count = 0
-    with open(cit_path, "r", encoding="utf-8") as cit_file, open(
-        cit_write_path, "w", encoding="utf-8"
-    ) as cit_write:
-        next(cit_file)  # skip header
-        for line in cit_file:
-            parts = line.strip().split("\t")
-            parts = [elem.strip('"') for elem in parts]
-            # Only keep citations where both patents are in A61B
-            if len(parts) >= 3 and parts[0] in target_ids and parts[2] in target_ids:
-                out_line = "\t".join(parts) + "\n"
-                cit_write.write(out_line)
-                cit_count += 1
-
-    print(f"Wrote {cit_count} citation pairs")
-    print("Done!")
+        next(abs)
+        for line in abs:
+            linesplt = line.strip().split('\t')
+            linesplt = [elem.strip('"') for elem in linesplt]
+            string = "\t".join(linesplt)
+            string = f"{string}\n"
+            if linesplt[0] in target_ids:
+                abs_write.write(string)
+        
+        labelled_ids = []
+        set_check = set()
+        next(cit)
+        for line in cit:
+            linesplt = line.strip().split('\t')
+            linesplt = [elem.strip('"') for elem in linesplt]
+            string = "\t".join(linesplt)
+            string = f"{string}\n"
+            if linesplt[0] in target_ids and linesplt[2] in target_ids:
+                if linesplt[0] not in set_check:
+                    set_check.add(linesplt[0])
+                    labelled_ids.append(linesplt[0])
+                cit_write.write(string)
+        
+        with open(labelled_ids_write_path, 'wb') as f:
+            pickle.dump(labelled_ids, f)
 
 
 if __name__ == "__main__":
