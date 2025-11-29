@@ -17,11 +17,12 @@ def main():
     cpc_path = r"Patent Data\g_cpc_current.tsv\g_cpc_current.tsv"
     abs_path = r"Patent Data\g_patent_abstract.tsv\g_patent_abstract.tsv"
     cit_path = r"Patent Data\g_us_patent_citation.tsv\g_us_patent_citation.tsv"
+    app_path = r"Patent Data\g_application.tsv\g_application.tsv"
 
-    abs_write_path = "filtered_abstracts.tsv"
-    cit_write_path = "filtered_citations.tsv"
-    labelled_ids_write_path = "labelled_ids.pickle"
-
+    abs_write_path = r"data\filtered_abstracts.tsv"
+    cit_write_path = r"data\filtered_citations.tsv"
+    labelled_ids_write_path = r"data\labelled_ids.pickle"
+    filing_dates_write_path = r"data\filing_dates.pickle"
 
     with open(cpc_path, 'r', encoding="utf-8") as cpc, open(abs_path, 'r', encoding="utf-8") as abs, open(cit_path, 'r', encoding="utf-8") as cit, open(abs_write_path, 'w', encoding="utf-8") as abs_write, open(cit_write_path, 'w', encoding="utf-8") as cit_write:
         next(cpc)
@@ -62,6 +63,20 @@ def main():
         with open(labelled_ids_write_path, 'wb') as f:
             pickle.dump(labelled_ids, f)
 
+    # Extract and store filing dates for target patents
+    filing_dates = {}
+    with open(app_path, 'r', encoding="utf-8") as patent:
+        next(patent)
+        for line in patent:
+            linesplt = line.strip().split('\t')
+            linesplt = [elem.strip('"') for elem in linesplt]
+            if linesplt[1] in target_ids:
+                filing_dates[linesplt[1]] = linesplt[3]
+    
+    with open(filing_dates_write_path, 'wb') as f:
+        pickle.dump(filing_dates, f)
+
+    
 
 if __name__ == "__main__":
     main()

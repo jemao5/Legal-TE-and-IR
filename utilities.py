@@ -1,4 +1,5 @@
 import pickle
+from datetime import datetime
 
 def get_filtered_abstracts_by_ids(ids, filtered_abstracts_path):
     """
@@ -23,12 +24,12 @@ def get_topk_labelled_abstracts(k, labelled_ids_path, filtered_abstracts_path):
     with open(labelled_ids_path, 'rb') as f:
         labelled_ids = pickle.load(f)
     
-    abstracts = get_filtered_abstracts_by_ids(labelled_ids[0:k] ,filtered_abstracts_path)
+    abstracts = get_filtered_abstracts_by_ids(labelled_ids[0:k], filtered_abstracts_path)
 
     return abstracts
 
 
-def evaluate_ranking(rankings_path, filtered_citations_path, recall_k):
+def evaluate_ranking(rankings_path, filtered_citations_path, filing_dates_path, recall_k):
     """
     Evaluates retrieval performance using MAP and Recall@K.
 
@@ -46,17 +47,21 @@ def evaluate_ranking(rankings_path, filtered_citations_path, recall_k):
         • Recall@K: Measures how many relevant docs appear in the top K results.
     - Prints MAP and Recall@K over all queries that had both rankings and ground truth citations.
     """
-
-    with open(filtered_citations_path, 'r', encoding='utf-8') as citations_file, open(rankings_path, 'r', encoding='utf-8') as rankings_file:
+    from datetime import datetime
+    with open(filtered_citations_path, 'r', encoding='utf-8') as citations_file, open(rankings_path, 'r', encoding='utf-8') as rankings_file, open(filing_dates_path, 'rb') as filing_dates_file:
         rankings = {}
         next(citations_file)  # Skip header
+
+        filing_dates = pickle.load(filing_dates_file)
+
 
         for line in rankings_file:
             line = line.strip().split('\t')
             if line[0] != line[1]:
                 if line[0] not in rankings:
                     rankings[line[0]] = []
-                rankings[line[0]].append(line[1])
+                if datetime.strptime(filing_dates[line[1]], "%Y-%m-%d") < datetime.strptime(filing_dates[line[0]], "%Y-%m-%d"):
+                    rankings[line[0]].append(line[1])
         
         ground_truths = {}
         for line in citations_file:
@@ -102,3 +107,37 @@ def evaluate_ranking(rankings_path, filtered_citations_path, recall_k):
 
     print(f"MAP: {mean_ap:.4f}")
     print(f"Recall@{k}: {mean_recall:.4f} over {evaluated_queries} queries")
+
+def get_primary_claims(ids, api_key):
+    """
+    Given a list of patent IDs, return {id: first_claim_text}.
+    """
+    import requests
+
+    url = "https://search.patentsview.org/api/v1/g_claim/"
+    headers = {"X-Api-Key": api_key}
+
+    query = {
+        "q": {
+            "_and": [
+                {"patent_id": ids},
+                {"claim_sequence": 0}
+            ]
+        },
+        "f": ["patent_id", "claim_sequence", "claim_text"],
+        "o": { "size": 1000} 
+    }
+
+    resp = requests.post(url, json=query, headers=headers)
+    resp.raise_for_status()
+
+    data = resp.json()
+
+    claims_dict = {}
+    for item in data.get("g_claims", []):
+        text = item.get("claim_text")
+        pid = item.get("patent_id")
+        if pid and text:
+            claims_dict[pid] = text
+
+    return claims_dict
