@@ -7,7 +7,11 @@ g_us_patent_citation.tsv
 filtered_abstracts.tsv
 filtered_citations.tsv
 
-# BM25 results
+# Precomputed pickle files (regenerable)
+*.pickle
+
+# Ranking output files
+*_rankings.tsv
 bm25_results.tsv
 
 # API spec (can be re-fetched)
@@ -15,6 +19,9 @@ patentsearch_openapi.json
 
 # Environment
 .env
+
+# Virtual environment
+venv/
 
 # Python
 __pycache__/

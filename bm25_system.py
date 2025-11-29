@@ -1,235 +1,167 @@
 #!/usr/bin/env python3
 """
 BM25 retrieval system for A61B patent abstracts.
-
-Reads filtered_abstracts.tsv (patent_id, patent_abstract) produced by data_filtering.py,
-builds a BM25 index, and for each query patent outputs ranked results in the format:
-    query_id\tranked_id\tscore
+Follows the same pattern as tfidf.py.
 """
 
-import argparse
-import math
+import utilities
 import re
-from collections import Counter
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, List, Set
-
+import math
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
 from stop_list import closed_class_stop_words
-
-TOKEN_PATTERN = re.compile(r"\b[\w-]+\b")
-STOP_WORDS: Set[str] = set(closed_class_stop_words)
-
-
-def tokenize(text: str, remove_stopwords: bool = True) -> List[str]:
-    """Tokenize text, lowercase, optionally remove stop words."""
-    tokens = [match.group(0).lower() for match in TOKEN_PATTERN.finditer(text)]
-    if remove_stopwords:
-        tokens = [t for t in tokens if t not in STOP_WORDS]
-    return tokens
-
-
-@dataclass
-class Document:
-    doc_id: str
-    text: str
-    tokens: List[str]
-
-
-def load_abstracts_tsv(tsv_path: str) -> List[Document]:
-    """
-    Load patents from filtered_abstracts.tsv.
-    Expected columns: patent_id, patent_abstract (tab-separated, no header).
-    """
-    documents: List[Document] = []
-    path = Path(tsv_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Missing TSV: {tsv_path}")
-
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split("\t")
-            if len(parts) < 2:
-                continue
-            patent_id = parts[0].strip('"')
-            abstract = parts[1].strip('"') if len(parts) > 1 else ""
-            tokens = tokenize(abstract)
-            documents.append(Document(doc_id=patent_id, text=abstract, tokens=tokens))
-    return documents
-
-
-def load_citations_tsv(tsv_path: str) -> Dict[str, Set[str]]:
-    """
-    Load citation pairs from filtered_citations.tsv.
-    Expected columns: patent_id, citation_sequence, citation_patent_id, ...
-    Returns dict mapping query_patent_id -> set of cited patent_ids.
-    """
-    citations: Dict[str, Set[str]] = {}
-    path = Path(tsv_path)
-    if not path.exists():
-        return citations
-
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split("\t")
-            if len(parts) < 3:
-                continue
-            patent_id = parts[0].strip('"')
-            cited_id = parts[2].strip('"')
-            if patent_id not in citations:
-                citations[patent_id] = set()
-            citations[patent_id].add(cited_id)
-    return citations
-
-
-class BM25:
-    def __init__(self, documents: List[Document], k1: float = 1.5, b: float = 0.75):
-        if not documents:
-            raise ValueError("No documents supplied to BM25.")
-        self.documents = documents
-        self.doc_id_to_idx: Dict[str, int] = {
-            doc.doc_id: idx for idx, doc in enumerate(documents)
-        }
-        self.k1 = k1
-        self.b = b
-        self.doc_lengths = [len(doc.tokens) for doc in self.documents]
-        self.avg_doc_len = (
-            sum(self.doc_lengths) / len(self.doc_lengths) if self.doc_lengths else 1.0
-        )
-        if self.avg_doc_len == 0:
-            self.avg_doc_len = 1.0
-
-        # Term frequencies per document
-        self.term_freqs = [Counter(doc.tokens) for doc in self.documents]
-
-        # Document frequencies
-        self.doc_freqs: Counter = Counter()
-        for freq_map in self.term_freqs:
-            for term in freq_map:
-                self.doc_freqs[term] += 1
-
-        # IDF values
-        N = len(self.documents)
-        self.idf = {
-            term: math.log((N - df + 0.5) / (df + 0.5) + 1)
-            for term, df in self.doc_freqs.items()
-        }
-
-    def score(self, query_tokens: List[str], doc_index: int) -> float:
-        """Compute BM25 score for a query against a document."""
-        freq_map = self.term_freqs[doc_index]
-        doc_len = self.doc_lengths[doc_index]
-        score = 0.0
-        for term in query_tokens:
-            if term not in freq_map:
-                continue
-            idf = self.idf.get(term, 0.0)
-            term_freq = freq_map[term]
-            numerator = term_freq * (self.k1 + 1)
-            denominator = term_freq + self.k1 * (
-                1 - self.b + self.b * doc_len / self.avg_doc_len
-            )
-            score += idf * (numerator / denominator)
-        return score
-
-    def rank(self, query_tokens: List[str], exclude_id: str = None, top_k: int = None) -> List[tuple]:
-        """
-        Rank all documents against query tokens.
-        Optionally exclude a document (e.g., the query document itself).
-        Returns list of (doc_id, score) sorted by score descending.
-        """
-        results = []
-        for idx, doc in enumerate(self.documents):
-            if exclude_id and doc.doc_id == exclude_id:
-                continue
-            score = self.score(query_tokens, idx)
-            results.append((doc.doc_id, score))
-        results.sort(key=lambda x: x[1], reverse=True)
-        if top_k:
-            return results[:top_k]
-        return results
+import pickle
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="BM25 retrieval for A61B patent abstracts."
-    )
-    parser.add_argument(
-        "--abstracts",
-        default="filtered_abstracts.tsv",
-        help="Path to filtered abstracts TSV (patent_id, abstract).",
-    )
-    parser.add_argument(
-        "--citations",
-        default="filtered_citations.tsv",
-        help="Path to filtered citations TSV for evaluation ground truth.",
-    )
-    parser.add_argument(
-        "--output",
-        default="bm25_results.tsv",
-        help="Output file for ranked results (query_id, ranked_id, score).",
-    )
-    parser.add_argument(
-        "--top_k",
-        type=int,
-        default=100,
-        help="Number of top results per query.",
-    )
-    parser.add_argument("--k1", type=float, default=1.5, help="BM25 k1 parameter.")
-    parser.add_argument("--b", type=float, default=0.75, help="BM25 b parameter.")
-    parser.add_argument(
-        "--query_ids",
-        nargs="*",
-        default=None,
-        help="Specific patent IDs to use as queries. If not provided, uses all patents with citations.",
-    )
-    args = parser.parse_args()
+    # Uncomment to rebuild the index:
+    # process_terms("filtered_abstracts.tsv")
 
-    print(f"Loading abstracts from {args.abstracts}...")
-    documents = load_abstracts_tsv(args.abstracts)
-    print(f"Loaded {len(documents)} documents.")
+    queries = utilities.get_topk_labelled_abstracts(50, "labelled_ids.pickle", "filtered_abstracts.tsv")
+    bm25_search(queries, "bm25_rankings.tsv")
+    utilities.evaluate_ranking("bm25_rankings.tsv", "filtered_citations.tsv", 1000)
 
-    print(f"Loading citations from {args.citations}...")
-    citations = load_citations_tsv(args.citations)
-    print(f"Loaded citations for {len(citations)} patents.")
 
-    print("Building BM25 index...")
-    bm25 = BM25(documents, k1=args.k1, b=args.b)
+def load_pickle(f):
+    with open(f, 'rb') as file:
+        return pickle.load(file)
 
-    # Determine which patents to use as queries
-    if args.query_ids:
-        query_ids = args.query_ids
-    else:
-        # Use all patents that have citations as queries
-        query_ids = list(citations.keys())
 
-    print(f"Running BM25 for {len(query_ids)} queries...")
+def tokenize(text):
+    """Tokenize, lowercase, remove stopwords, and stem."""
+    text = text.lower()
+    text = text.replace('-', ' ')
+    text = re.sub(r'[^a-z\s]', '', text)
 
-    with open(args.output, "w", encoding="utf-8") as out:
-        for i, query_id in enumerate(query_ids):
-            if query_id not in bm25.doc_id_to_idx:
-                continue
+    tokens = word_tokenize(text)
+    tokens = [i for i in tokens if i not in closed_class_stop_words]
+    tokens = ["viscou" if i == "viscosity" else i for i in tokens]
 
-            # Use the query patent's abstract as the query
-            query_doc = documents[bm25.doc_id_to_idx[query_id]]
-            query_tokens = query_doc.tokens
+    stemmer = PorterStemmer()
+    tokens = [stemmer.stem(token) for token in tokens]
 
-            # Rank all other documents
-            ranked = bm25.rank(query_tokens, exclude_id=query_id, top_k=args.top_k)
+    return tokens
 
-            for ranked_id, score in ranked:
-                out.write(f"{query_id}\t{ranked_id}\t{score:.17f}\n")
 
-            if (i + 1) % 100 == 0:
-                print(f"  Processed {i + 1}/{len(query_ids)} queries...")
+def process_terms(in_path, k1=1.5, b=0.75):
+    """
+    Precompute BM25 term weights for all documents and save to pickle.
+    """
+    abstracts = {}
 
-    print(f"Results written to {args.output}")
+    with open(in_path, 'r', encoding='utf-8') as abs_file:
+        for line in abs_file:
+            linesplt = line.strip().split("\t")
+            if len(linesplt) > 1:
+                abstracts[linesplt[0]] = linesplt[1]
+
+    # Tokenize all abstracts
+    tokenized = {}
+    doc_lengths = {}
+    for patent_id in abstracts:
+        tokens = tokenize(abstracts[patent_id])
+        tokenized[patent_id] = tokens
+        doc_lengths[patent_id] = len(tokens)
+        if len(tokens) == 0:
+            print(f"Empty abstract: {patent_id}")
+
+    print(f"Loaded {len(abstracts)} abstracts")
+
+    # Calculate average document length
+    avg_doc_len = sum(doc_lengths.values()) / len(doc_lengths) if doc_lengths else 1.0
+
+    # Calculate document frequencies
+    term_df = {}
+    for patent_id, tokens in tokenized.items():
+        unique_terms = set(tokens)
+        for term in unique_terms:
+            term_df[term] = term_df.get(term, 0) + 1
+
+    # Calculate IDF values (BM25 style)
+    N = len(abstracts)
+    term_idf = {
+        term: math.log((N - df + 0.5) / (df + 0.5) + 1)
+        for term, df in term_df.items()
+    }
+
+    # Calculate BM25 term weights for each document
+    bm25_vectors = {}
+    for patent_id, tokens in tokenized.items():
+        doc_len = doc_lengths[patent_id]
+        term_freqs = {}
+        for term in tokens:
+            term_freqs[term] = term_freqs.get(term, 0) + 1
+
+        bm25_vectors[patent_id] = {}
+        for term, tf in term_freqs.items():
+            idf = term_idf.get(term, 0)
+            # BM25 term weight
+            numerator = tf * (k1 + 1)
+            denominator = tf + k1 * (1 - b + b * doc_len / avg_doc_len)
+            bm25_vectors[patent_id][term] = idf * (numerator / denominator)
+
+    # Save to pickle
+    with open("abs_bm25.pickle", 'wb') as f1, open("term_idf_bm25.pickle", 'wb') as f2:
+        pickle.dump(bm25_vectors, f1)
+        pickle.dump(term_idf, f2)
+
+    # Also save avg_doc_len and doc_lengths for query scoring
+    with open("bm25_params.pickle", 'wb') as f3:
+        pickle.dump({'avg_doc_len': avg_doc_len, 'k1': k1, 'b': b}, f3)
+
+    print("BM25 index saved to abs_bm25.pickle, term_idf_bm25.pickle, bm25_params.pickle")
+
+
+def bm25_search(queries, output_file, k1=1.5, b=0.75):
+    """
+    Search using precomputed BM25 vectors.
+    For queries, we compute BM25-style weights and use dot product for scoring.
+    """
+    abstract_vectors = load_pickle("abs_bm25.pickle")
+    term_idf = load_pickle("term_idf_bm25.pickle")
+    params = load_pickle("bm25_params.pickle")
+
+    avg_doc_len = params['avg_doc_len']
+    k1 = params['k1']
+    b = params['b']
+
+    # Tokenize queries
+    query_tokens = {}
+    for query_id in queries:
+        query_tokens[query_id] = tokenize(queries[query_id])
+
+    # Calculate BM25 scores using dot product approach
+    scores = {}
+
+    for query_id, q_tokens in query_tokens.items():
+        # Count query term frequencies
+        q_term_freqs = {}
+        for term in q_tokens:
+            q_term_freqs[term] = q_term_freqs.get(term, 0) + 1
+
+        scores[query_id] = {}
+
+        for doc_id, doc_vector in abstract_vectors.items():
+            if doc_id == query_id:
+                continue  # Skip self
+
+            score = 0.0
+            for term in q_term_freqs:
+                if term in doc_vector:
+                    score += doc_vector[term]
+
+            if score > 0:
+                scores[query_id][doc_id] = score
+
+    # Create ranked lists and output
+    with open(output_file, 'w', encoding='utf-8') as file:
+        for query_id in scores:
+            # Sort by score descending
+            ranked = sorted(scores[query_id].items(), key=lambda x: x[1], reverse=True)
+            for doc_id, score in ranked:
+                file.write(f"{query_id}\t{doc_id}\t{score}\n")
+
+    print(f"BM25 rankings saved to {output_file}")
 
 
 if __name__ == "__main__":
