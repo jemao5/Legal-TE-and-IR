@@ -15,12 +15,11 @@ import pickle
 
 def main():
     # Uncomment to rebuild the index:
-    # process_terms("filtered_abstracts.tsv")
+    # process_terms(r"data\filtered_abstracts.tsv")
 
-    queries = utilities.get_topk_labelled_abstracts(50, "labelled_ids.pickle", "filtered_abstracts.tsv")
-    bm25_search(queries, "bm25_rankings.tsv")
-    utilities.evaluate_ranking("bm25_rankings.tsv", "filtered_citations.tsv", 1000)
-
+    queries = utilities.get_topk_labelled_abstracts(50, r"data\labelled_ids.pickle", r"data\filtered_abstracts.tsv")
+    bm25_search(queries, r"data\bm25_rankings.tsv")
+    utilities.evaluate_ranking(r"data\bm25_rankings.tsv", r"data\filtered_citations.tsv", r"data\filing_dates.pickle", 1000)
 
 def load_pickle(f):
     with open(f, 'rb') as file:
@@ -101,12 +100,12 @@ def process_terms(in_path, k1=1.5, b=0.75):
             bm25_vectors[patent_id][term] = idf * (numerator / denominator)
 
     # Save to pickle
-    with open("abs_bm25.pickle", 'wb') as f1, open("term_idf_bm25.pickle", 'wb') as f2:
+    with open(r"data\abs_bm25.pickle", 'wb') as f1, open(r"data\term_idf_bm25.pickle", 'wb') as f2:
         pickle.dump(bm25_vectors, f1)
         pickle.dump(term_idf, f2)
 
     # Also save avg_doc_len and doc_lengths for query scoring
-    with open("bm25_params.pickle", 'wb') as f3:
+    with open(r"data\bm25_params.pickle", 'wb') as f3:
         pickle.dump({'avg_doc_len': avg_doc_len, 'k1': k1, 'b': b}, f3)
 
     print("BM25 index saved to abs_bm25.pickle, term_idf_bm25.pickle, bm25_params.pickle")
@@ -117,9 +116,9 @@ def bm25_search(queries, output_file, k1=1.5, b=0.75):
     Search using precomputed BM25 vectors.
     For queries, we compute BM25-style weights and use dot product for scoring.
     """
-    abstract_vectors = load_pickle("abs_bm25.pickle")
-    term_idf = load_pickle("term_idf_bm25.pickle")
-    params = load_pickle("bm25_params.pickle")
+    abstract_vectors = load_pickle(r"data\abs_bm25.pickle")
+    term_idf = load_pickle(r"data\term_idf_bm25.pickle")
+    params = load_pickle(r"data\bm25_params.pickle")
 
     avg_doc_len = params['avg_doc_len']
     k1 = params['k1']
