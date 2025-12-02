@@ -9,13 +9,13 @@ import pickle
 import os
 
 def main():
-    # filtered_abs_path = r"data\filtered_abstracts.tsv"
+    # filtered_abs_path = r"data/filtered_abstracts.tsv"
     # process_terms(filtered_abs_path)
 
-    queries = utilities.get_topk_labelled_abstracts(50, r"data\labelled_ids.pickle", r"data\filtered_abstracts.tsv")
+    queries = utilities.get_topk_labelled_abstracts(50, r"data/labelled_ids.pickle", r"data/filtered_abstracts.tsv")
     # queries = {'11633118': 'A system, comprising:\na memory that stores a plurality of instructions;\nprocessor circuitry configured to carry out the plurality of instructions to execute a machine learning engine configured to map spectrally enhanced features extracted from spectral computed tomography (CT) volumetric image data onto fractional flow reserve (FFR) values to determine the FFR value with spectral volumetric image data, wherein the spectral CT volumetric image data include data for at least two different energies and/or energy ranges; and\na display configured to visually present the determined FFR value.'}
-    tfidf_search(queries, r"data\tfidf_rankings.tsv", r"data\abs_tfidf.pickle", r"data\term_idf.pickle")
-    utilities.evaluate_ranking(r"data\tfidf_rankings.tsv", r"data\filtered_citations.tsv", r"data\filing_dates.pickle", 1000)
+    tfidf_search(queries, r"data/tfidf_rankings.tsv", r"data/abs_tfidf.pickle", r"data/term_idf.pickle")
+    utilities.evaluate_ranking(r"data/tfidf_rankings.tsv", r"data/filtered_citations.tsv", r"data/filing_dates.pickle", 1000)
 
 def load_pickle(f):
     with open(f, 'rb') as file:
@@ -125,7 +125,7 @@ def process_terms(in_path):
         abstract_vectors[abstract] = {term: math.log(count) + 1.0 for term, count in abstract_vectors[abstract].items()}
         abstract_vectors[abstract] = {term: count * a_term_idf[term] for term, count in abstract_vectors[abstract].items()}
 
-    with open(r"data\abs_tfidf.pickle", 'wb') as f1, open(r"data\term_idf.pickle", 'wb') as f2:
+    with open(r"data/abs_tfidf.pickle", 'wb') as f1, open(r"data/term_idf.pickle", 'wb') as f2:
         pickle.dump(abstract_vectors, f1)
         pickle.dump(a_term_idf, f2)
 

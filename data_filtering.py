@@ -14,15 +14,15 @@ def main():
     for information retrieval system evaluation.
     """
     
-    cpc_path = r"Patent Data\g_cpc_current.tsv\g_cpc_current.tsv"
-    abs_path = r"Patent Data\g_patent_abstract.tsv\g_patent_abstract.tsv"
-    cit_path = r"Patent Data\g_us_patent_citation.tsv\g_us_patent_citation.tsv"
-    app_path = r"Patent Data\g_application.tsv\g_application.tsv"
+    cpc_path = r"Patent Data/g_cpc_current.tsv/g_cpc_current.tsv"
+    abs_path = r"Patent Data/g_patent_abstract.tsv/g_patent_abstract.tsv"
+    cit_path = r"Patent Data/g_us_patent_citation.tsv/g_us_patent_citation.tsv"
+    app_path = r"Patent Data/g_application.tsv/g_application.tsv"
 
-    abs_write_path = r"data\filtered_abstracts.tsv"
-    cit_write_path = r"data\filtered_citations.tsv"
-    labelled_ids_write_path = r"data\labelled_ids.pickle"
-    filing_dates_write_path = r"data\filing_dates.pickle"
+    abs_write_path = r"data/filtered_abstracts.tsv"
+    cit_write_path = r"data/filtered_citations.tsv"
+    labelled_ids_write_path = r"data/labelled_ids.pickle"
+    filing_dates_write_path = r"data/filing_dates.pickle"
 
     with open(cpc_path, 'r', encoding="utf-8") as cpc, open(abs_path, 'r', encoding="utf-8") as abs, open(cit_path, 'r', encoding="utf-8") as cit, open(abs_write_path, 'w', encoding="utf-8") as abs_write, open(cit_write_path, 'w', encoding="utf-8") as cit_write:
         next(cpc)
