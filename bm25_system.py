@@ -14,20 +14,40 @@ import pickle
 from pathlib import Path
 
 
-def main():
-    # Uncomment to rebuild the index:
-    process_terms(Path("data/filtered_abstracts.tsv"))
+def main(num_queries=50, recall_k=1000, force_index=False):
+    """
+    Main function for BM25 retrieval.
+
+    Args:
+        num_queries: Number of query patents to use for evaluation
+        recall_k: K value for Recall@K metric
+        force_index: If True, rebuild index even if it exists
+    """
+    # Check if index exists
+    index_exists = (
+        Path("data/abs_bm25.pickle").exists()
+        and Path("data/term_idf_bm25.pickle").exists()
+        and Path("data/bm25_params.pickle").exists()
+    )
+
+    if not index_exists or force_index:
+        process_terms(Path("data/filtered_abstracts.tsv"))
+    else:
+        print("BM25 index already exists. Skipping index building.")
 
     queries = utilities.get_topk_labelled_abstracts(
-        50, Path("data/labelled_ids.pickle"), Path("data/filtered_abstracts.tsv")
+        num_queries,
+        Path("data/labelled_ids.pickle"),
+        Path("data/filtered_abstracts.tsv"),
     )
     bm25_search(queries, Path("data/bm25_rankings.tsv"))
     utilities.evaluate_ranking(
         Path("data/bm25_rankings.tsv"),
         Path("data/filtered_citations.tsv"),
         Path("data/filing_dates.pickle"),
-        1000,
+        recall_k,
     )
+
 
 def load_pickle(f):
     with open(f, 'rb') as file:
@@ -175,4 +195,27 @@ def bm25_search(queries, output_file, k1=1.5, b=0.75):
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run BM25 retrieval")
+    parser.add_argument(
+        "--num-queries",
+        type=int,
+        default=50,
+        help="Number of query patents (default: 50)",
+    )
+    parser.add_argument(
+        "--recall-k",
+        type=int,
+        default=1000,
+        help="K value for Recall@K (default: 1000)",
+    )
+    parser.add_argument(
+        "--force-index", action="store_true", help="Force regeneration of index"
+    )
+    args = parser.parse_args()
+    main(
+        num_queries=args.num_queries,
+        recall_k=args.recall_k,
+        force_index=args.force_index,
+    )

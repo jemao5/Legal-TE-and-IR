@@ -6,17 +6,31 @@ import utilities
 import torch
 from pathlib import Path
 
-def main():
-    abstract_embeddings = get_abstract_embeddings()
-    with open(Path("data/patent_embeddings.pickle"), "wb") as f:
-        pickle.dump(abstract_embeddings, f)
+
+def main(num_queries=50, recall_k=1000, force_index=False):
+    """
+    Main function for embedding-based retrieval.
+
+    Args:
+        num_queries: Number of query patents to use for evaluation
+        recall_k: K value for Recall@K metric
+        force_index: If True, rebuild index even if it exists
+    """
+    # Check if index exists
+    index_exists = Path("data/patent_embeddings.pickle").exists()
+
+    if not index_exists or force_index:
+        abstract_embeddings = get_abstract_embeddings()
+        with open(Path("data/patent_embeddings.pickle"), "wb") as f:
+            pickle.dump(abstract_embeddings, f)
+    else:
+        print("Embeddings index already exists. Skipping index building.")
 
     queries = utilities.get_topk_labelled_abstracts(
-        50,
+        num_queries,
         Path("data/labelled_ids.pickle"),
         Path("data/filtered_abstracts.tsv"),
     )
-    # queries = {'11633118': 'A system, comprising:\na memory that stores a plurality of instructions;\nprocessor circuitry configured to carry out the plurality of instructions to execute a machine learning engine configured to map spectrally enhanced features extracted from spectral computed tomography (CT) volumetric image data onto fractional flow reserve (FFR) values to determine the FFR value with spectral volumetric image data, wherein the spectral CT volumetric image data include data for at least two different energies and/or energy ranges; and\na display configured to visually present the determined FFR value.'}
     embeddings_search(
         queries,
         Path("data/embedding_rankings.tsv"),
@@ -26,7 +40,7 @@ def main():
         Path("data/embedding_rankings.tsv"),
         Path("data/filtered_citations.tsv"),
         Path("data/filing_dates.pickle"),
-        1000,
+        recall_k,
     )
 
 
@@ -76,10 +90,10 @@ def embeddings_search(queries, output_file, patent_embeddings_path):
                     continue  # skip self-match
                 score = sims[idx]
                 out.write(f"{qid}\t{pid}\t{score:.6f}\n")
-    
+
     # list_of_queries = list(queries.values())
     # query_embeddings = model.encode(list_of_queries, show_progress_bar=True, convert_to_numpy=True)
-    
+
     # query_embeddings = dict(zip(queries.keys(), query_embeddings))
     # cosine_similarities = {}
 
@@ -87,7 +101,7 @@ def embeddings_search(queries, output_file, patent_embeddings_path):
     #     cosine_similarities[query] = {}
     #     for patent in patent_embeddings:
     #         cosine_similarities[query][patent] = cosine_similarity(query_embeddings[query].reshape(1, -1), patent_embeddings[patent].reshape(1, -1))[0][0]
-    
+
     # with open(output_file, 'w', encoding='utf-8') as out:
     #     for query in cosine_similarities:
     #         ranked_patents = sorted(cosine_similarities[query].items(), key=lambda item: item[1], reverse=True)
@@ -95,4 +109,27 @@ def embeddings_search(queries, output_file, patent_embeddings_path):
     #             out.write(f'"{query}"\t"{patent}"\t{score}\n')
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run embedding-based retrieval")
+    parser.add_argument(
+        "--num-queries",
+        type=int,
+        default=50,
+        help="Number of query patents (default: 50)",
+    )
+    parser.add_argument(
+        "--recall-k",
+        type=int,
+        default=1000,
+        help="K value for Recall@K (default: 1000)",
+    )
+    parser.add_argument(
+        "--force-index", action="store_true", help="Force regeneration of index"
+    )
+    args = parser.parse_args()
+    main(
+        num_queries=args.num_queries,
+        recall_k=args.recall_k,
+        force_index=args.force_index,
+    )

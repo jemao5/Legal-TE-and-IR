@@ -8,16 +8,33 @@ from stop_list import closed_class_stop_words
 import pickle
 from pathlib import Path
 
-def main():
+
+def main(num_queries=50, recall_k=1000, force_index=False):
+    """
+    Main function for TF-IDF retrieval.
+
+    Args:
+        num_queries: Number of query patents to use for evaluation
+        recall_k: K value for Recall@K metric
+        force_index: If True, rebuild index even if it exists
+    """
     filtered_abs_path = Path("data/filtered_abstracts.tsv")
-    process_terms(filtered_abs_path)
+
+    # Check if index exists
+    index_exists = (
+        Path("data/abs_tfidf.pickle").exists() and Path("data/term_idf.pickle").exists()
+    )
+
+    if not index_exists or force_index:
+        process_terms(filtered_abs_path)
+    else:
+        print("TF-IDF index already exists. Skipping index building.")
 
     queries = utilities.get_topk_labelled_abstracts(
-        50,
+        num_queries,
         Path("data/labelled_ids.pickle"),
         Path("data/filtered_abstracts.tsv"),
     )
-    # queries = {'11633118': 'A system, comprising:\na memory that stores a plurality of instructions;\nprocessor circuitry configured to carry out the plurality of instructions to execute a machine learning engine configured to map spectrally enhanced features extracted from spectral computed tomography (CT) volumetric image data onto fractional flow reserve (FFR) values to determine the FFR value with spectral volumetric image data, wherein the spectral CT volumetric image data include data for at least two different energies and/or energy ranges; and\na display configured to visually present the determined FFR value.'}
     tfidf_search(
         queries,
         Path("data/tfidf_rankings.tsv"),
@@ -28,8 +45,9 @@ def main():
         Path("data/tfidf_rankings.tsv"),
         Path("data/filtered_citations.tsv"),
         Path("data/filing_dates.pickle"),
-        1000,
+        recall_k,
     )
+
 
 def load_pickle(f):
     with open(f, 'rb') as file:
@@ -75,6 +93,8 @@ def tfidf_search(queries, output_file, abstract_vectors_path, term_idf_path):
         cosine_similarities[query] = {}
 
         for abstract in abstract_vectors:
+            if abstract == query:
+                continue  # Skip self-match
             a_vec = np.array([abstract_vectors[abstract].get(term, 0) for term in term_list])
             a_norm = abstract_norms[abstract]
 
@@ -157,4 +177,27 @@ def tokenize(text):
     return tokens
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run TF-IDF retrieval")
+    parser.add_argument(
+        "--num-queries",
+        type=int,
+        default=50,
+        help="Number of query patents (default: 50)",
+    )
+    parser.add_argument(
+        "--recall-k",
+        type=int,
+        default=1000,
+        help="K value for Recall@K (default: 1000)",
+    )
+    parser.add_argument(
+        "--force-index", action="store_true", help="Force regeneration of index"
+    )
+    args = parser.parse_args()
+    main(
+        num_queries=args.num_queries,
+        recall_k=args.recall_k,
+        force_index=args.force_index,
+    )
