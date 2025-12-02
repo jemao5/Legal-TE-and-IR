@@ -4,22 +4,36 @@ import numpy as np
 import pickle
 import utilities
 import torch
+from pathlib import Path
 
 def main():
-    # abstract_embeddings = get_abstract_embeddings()
-    # with open(r"data/patent_embeddings.pickle", 'wb') as f:
-    #     pickle.dump(abstract_embeddings, f)
+    abstract_embeddings = get_abstract_embeddings()
+    with open(Path("data/patent_embeddings.pickle"), "wb") as f:
+        pickle.dump(abstract_embeddings, f)
 
-    queries = utilities.get_topk_labelled_abstracts(50, r"data/labelled_ids.pickle", r"data/filtered_abstracts.tsv")
+    queries = utilities.get_topk_labelled_abstracts(
+        50,
+        Path("data/labelled_ids.pickle"),
+        Path("data/filtered_abstracts.tsv"),
+    )
     # queries = {'11633118': 'A system, comprising:\na memory that stores a plurality of instructions;\nprocessor circuitry configured to carry out the plurality of instructions to execute a machine learning engine configured to map spectrally enhanced features extracted from spectral computed tomography (CT) volumetric image data onto fractional flow reserve (FFR) values to determine the FFR value with spectral volumetric image data, wherein the spectral CT volumetric image data include data for at least two different energies and/or energy ranges; and\na display configured to visually present the determined FFR value.'}
-    embeddings_search(queries, r"data/embedding_rankings.tsv", r"data/patent_embeddings.pickle")
-    utilities.evaluate_ranking(r"data/embedding_rankings.tsv", r"data/filtered_citations.tsv", r"data/filing_dates.pickle", 1000)
-    
+    embeddings_search(
+        queries,
+        Path("data/embedding_rankings.tsv"),
+        Path("data/patent_embeddings.pickle"),
+    )
+    utilities.evaluate_ranking(
+        Path("data/embedding_rankings.tsv"),
+        Path("data/filtered_citations.tsv"),
+        Path("data/filing_dates.pickle"),
+        1000,
+    )
+
 
 def get_abstract_embeddings():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = SentenceTransformer("AI-Growth-Lab/PatentSBERTa", device=device)
-    with open(r"data/filtered_abstracts.tsv", 'r', encoding='utf-8') as f:
+    with open(Path("data/filtered_abstracts.tsv"), "r", encoding="utf-8") as f:
         next(f)  # Skip header
         list_of_abstracts = []
         list_of_ids = []

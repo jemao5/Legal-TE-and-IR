@@ -6,21 +6,35 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from stop_list import closed_class_stop_words
 import pickle
-import os
+from pathlib import Path
 
 def main():
-    # filtered_abs_path = r"data/filtered_abstracts.tsv"
-    # process_terms(filtered_abs_path)
+    filtered_abs_path = Path("data/filtered_abstracts.tsv")
+    process_terms(filtered_abs_path)
 
-    queries = utilities.get_topk_labelled_abstracts(50, r"data/labelled_ids.pickle", r"data/filtered_abstracts.tsv")
+    queries = utilities.get_topk_labelled_abstracts(
+        50,
+        Path("data/labelled_ids.pickle"),
+        Path("data/filtered_abstracts.tsv"),
+    )
     # queries = {'11633118': 'A system, comprising:\na memory that stores a plurality of instructions;\nprocessor circuitry configured to carry out the plurality of instructions to execute a machine learning engine configured to map spectrally enhanced features extracted from spectral computed tomography (CT) volumetric image data onto fractional flow reserve (FFR) values to determine the FFR value with spectral volumetric image data, wherein the spectral CT volumetric image data include data for at least two different energies and/or energy ranges; and\na display configured to visually present the determined FFR value.'}
-    tfidf_search(queries, r"data/tfidf_rankings.tsv", r"data/abs_tfidf.pickle", r"data/term_idf.pickle")
-    utilities.evaluate_ranking(r"data/tfidf_rankings.tsv", r"data/filtered_citations.tsv", r"data/filing_dates.pickle", 1000)
+    tfidf_search(
+        queries,
+        Path("data/tfidf_rankings.tsv"),
+        Path("data/abs_tfidf.pickle"),
+        Path("data/term_idf.pickle"),
+    )
+    utilities.evaluate_ranking(
+        Path("data/tfidf_rankings.tsv"),
+        Path("data/filtered_citations.tsv"),
+        Path("data/filing_dates.pickle"),
+        1000,
+    )
 
 def load_pickle(f):
     with open(f, 'rb') as file:
         return pickle.load(file)
-    
+
 def tfidf_search(queries, output_file, abstract_vectors_path, term_idf_path):
     """
     Takes in a dictionary of queries. Returns an ordered list of the top 100 pattents by similarity.
@@ -29,25 +43,24 @@ def tfidf_search(queries, output_file, abstract_vectors_path, term_idf_path):
     abstract_vectors = load_pickle(abstract_vectors_path)
     a_term_idf = load_pickle(term_idf_path)
 
-    #tokenize queries
+    # tokenize queries
     for query in queries:
         queries[query] = tokenize(queries[query])
 
-    #calculate TF-IDF for the queries
+    # calculate TF-IDF for the queries
     query_vectors = {}
-
 
     for query in queries:
         unique_terms = set(queries[query])
 
-        #store term frequencies
+        # store term frequencies
         query_vectors[query] = {term: queries[query].count(term) for term in unique_terms}
 
-        #calculate TF-IDF
+        # calculate TF-IDF
         query_vectors[query] = {term: math.log(count) + 1.0 for term, count in query_vectors[query].items()}
         query_vectors[query] = {term: count * a_term_idf.get(term, 0) for term, count in query_vectors[query].items()}
 
-    #Calculate cosine similarity
+    # Calculate cosine similarity
     cosine_similarities = {}
 
     abstract_norms = {}
@@ -64,14 +77,13 @@ def tfidf_search(queries, output_file, abstract_vectors_path, term_idf_path):
         for abstract in abstract_vectors:
             a_vec = np.array([abstract_vectors[abstract].get(term, 0) for term in term_list])
             a_norm = abstract_norms[abstract]
-            
+
             if q_norm > 0 and a_norm > 0:
                 cosine_similarities[query][abstract] = (q_vec @ a_vec) / (q_norm * a_norm)
             else:
                 cosine_similarities[query][abstract] = 0.0
-                
 
-    #Create ranked list and output
+    # Create ranked list and output
     ranked_list = {}
     for q in cosine_similarities:
         ranked_list[q] = [key for key, value in reversed(sorted(cosine_similarities[q].items(), key=lambda item: item[1]))]
@@ -83,8 +95,6 @@ def tfidf_search(queries, output_file, abstract_vectors_path, term_idf_path):
                     file.write(f"{q}\t{id}\t{cosine_similarities[q][id]}\n")
 
 
-
-
 def process_terms(in_path):
     abstracts = {}
 
@@ -93,7 +103,7 @@ def process_terms(in_path):
             linesplt = line.strip().split("\t")
             if len(linesplt) > 1: # some patents have empty abstracts
                 abstracts[linesplt[0]] = linesplt[1]
-    
+
     # print(abstracts)
 
     for abstract in abstracts:
@@ -102,12 +112,11 @@ def process_terms(in_path):
             print(f"Empty abstract: {abstract}")
     print(len(abstracts))
 
-
-    #Calculate td-idf values for the documents
+    # Calculate td-idf values for the documents
     abstract_vectors = {}
     a_term_df = {}
 
-    #store term frequences in each doc and the number of documents each term is seen in
+    # store term frequences in each doc and the number of documents each term is seen in
     for abstract in abstracts:
         unique_terms = set(abstracts[abstract])
         abstract_vectors[abstract] = {}
@@ -116,16 +125,19 @@ def process_terms(in_path):
             if abstract_vectors[abstract][term] > 0:
                 a_term_df[term] = a_term_df.get(term, 0) + 1
 
-    #calculate document frequences
+    # calculate document frequences
     a_term_idf = {term: math.log((len(abstracts)+1.0)/(df_value+.5)) + 1.0 for term, df_value in a_term_df.items()}
 
-    #calculate TF-IDF for the documents
+    # calculate TF-IDF for the documents
     for abstract in abstract_vectors:
-        #log smoothed TF
+        # log smoothed TF
         abstract_vectors[abstract] = {term: math.log(count) + 1.0 for term, count in abstract_vectors[abstract].items()}
         abstract_vectors[abstract] = {term: count * a_term_idf[term] for term, count in abstract_vectors[abstract].items()}
 
-    with open(r"data/abs_tfidf.pickle", 'wb') as f1, open(r"data/term_idf.pickle", 'wb') as f2:
+    with (
+        open(Path("data/abs_tfidf.pickle"), "wb") as f1,
+        open(Path("data/term_idf.pickle"), "wb") as f2,
+    ):
         pickle.dump(abstract_vectors, f1)
         pickle.dump(a_term_idf, f2)
 
